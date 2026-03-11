@@ -1,6 +1,38 @@
 import { getDriveService } from './googleDrive';
 import { Session } from 'next-auth';
 
+function parseCsvLine(text: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 export async function getUserPermissions(email: string | null | undefined): Promise<string[]> {
   if (!email) return []; // No email, no access
   
@@ -28,14 +60,11 @@ export async function getUserPermissions(email: string | null | undefined): Prom
       const line = lines[i].trim();
       if (!line) continue;
       
-      // Basic CSV split, assuming no complex quotes in simple email/folder list
-      // A better way is using a regex to handle basic quotes if needed, but for our simple case splitting by comma is often enough for the first column.
-      // Let's do a simple parse:
-      const firstCommaIdx = line.indexOf(',');
-      if (firstCommaIdx === -1) continue;
+      const columns = parseCsvLine(line);
+      if (columns.length < 2) continue;
       
-      const rowEmail = line.substring(0, firstCommaIdx).replace(/(^"|"$)/g, '').trim().toLowerCase();
-      let rowFolders = line.substring(firstCommaIdx + 1).replace(/(^"|"$)/g, '').trim();
+      const rowEmail = columns[0].trim().toLowerCase();
+      const rowFolders = columns[1].trim();
       
       if (rowEmail === email.toLowerCase()) {
         if (rowFolders === '*' || rowFolders === '') {
