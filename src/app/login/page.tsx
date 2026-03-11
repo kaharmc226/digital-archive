@@ -23,8 +23,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-4">
             <span className="text-3xl">📂</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Digital Archive</h1>
-          <p className="text-gray-500">Please sign in to access your documents</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Arsip Digital</h1>
+          <p className="text-gray-500">Silakan masuk untuk mengakses dokumen Anda</p>
         </div>
 
         <button
@@ -54,13 +54,13 @@ export default function LoginPage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Sign in with Google
+              Masuk dengan Google
             </>
           )}
         </button>
 
         <p className="mt-8 text-center text-xs text-gray-400">
-          Secure, private, and powered by Google Cloud.
+          Aman, privat, dan didukung oleh Google Cloud.
         </p>
       </div>
     </div>

@@ -23,16 +23,16 @@ export async function GET(request: Request) {
     const allowedFolders = await getUserPermissions(session.user.email);
     if (allowedFolders.length === 0) {
       return NextResponse.json({ 
-        currentFolderName: 'Access Denied', 
+        currentFolderName: 'Akses Ditolak', 
         folders: [], files: [], categories: [], 
-        error: 'You do not have permission to view this archive. Contact the administrator.' 
+        error: 'Anda tidak memiliki izin untuk melihat arsip ini. Silakan hubungi administrator.' 
       }, { status: 403 });
     }
 
     const drive = await getDriveService();
 
     // 1. Fetch current folder details (for breadcrumbs)
-    let currentFolderName = 'All Documents';
+    let currentFolderName = 'Semua Dokumen';
     if (folderId !== rootId) {
       const folderMetadata = await drive.files.get({
         fileId: folderId,
@@ -59,9 +59,9 @@ export async function GET(request: Request) {
       // but this works for our category-level permissions).
       if (!allowedFolders.includes('*') && !allowedFolders.includes(currentFolderName.toLowerCase())) {
          return NextResponse.json({ 
-          currentFolderName: 'Access Denied', 
+          currentFolderName: 'Akses Ditolak', 
           folders: [], files: [], categories: categories, 
-          error: 'You do not have permission to view this folder.' 
+          error: 'Anda tidak memiliki izin untuk melihat folder ini.' 
         }, { status: 403 });
       }
     }

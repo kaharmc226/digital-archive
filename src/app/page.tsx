@@ -22,10 +22,10 @@ export default function Home() {
     categories: {id: string, name: string}[],
     folders: DriveItem[], 
     files: DriveItem[] 
-  }>({ currentFolderName: 'All Documents', categories: [], folders: [], files: [] });
+  }>({ currentFolderName: 'Semua Dokumen', categories: [], folders: [], files: [] });
   
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
-  const [path, setPath] = useState<{id: string | null, name: string}[]>([{id: null, name: 'All Documents'}]);
+  const [path, setPath] = useState<{id: string | null, name: string}[]>([{id: null, name: 'Semua Dokumen'}]);
   
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -61,8 +61,8 @@ export default function Home() {
       if (resData.error) throw new Error(resData.error);
       setData(resData);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch files');
-      toast.error(err.message || 'Failed to fetch files');
+      setError(err.message || 'Gagal memuat file');
+      toast.error(err.message || 'Gagal memuat file');
     } finally {
       setLoading(false);
     }
@@ -73,18 +73,17 @@ export default function Home() {
   }, [activeFolderId, debouncedSearch]);
 
   const navigateTo = (id: string | null, name: string, isTopCategory: boolean = false) => {
-    // Clear search when navigating
     setSearchInput('');
     setDebouncedSearch('');
     
     if (id === null) {
-      setPath([{id: null, name: 'All Documents'}]);
+      setPath([{id: null, name: 'Semua Dokumen'}]);
       setActiveFolderId(null);
       return;
     }
     
     if (isTopCategory) {
-      setPath([{id: null, name: 'All Documents'}, {id, name}]);
+      setPath([{id: null, name: 'Semua Dokumen'}, {id, name}]);
     } else {
       const index = path.findIndex(p => p.id === id);
       if (index !== -1) {
@@ -98,22 +97,22 @@ export default function Home() {
 
   const processUpload = async (file: File) => {
     setUploading(true);
-    setIsUploadModalOpen(false); // Close modal immediately
+    setIsUploadModalOpen(false);
     const formData = new FormData();
     formData.append('file', file);
     if (activeFolderId) formData.append('folderId', activeFolderId);
 
     const uploadPromise = fetch('/api/drive/upload', { method: 'POST', body: formData })
       .then(async (res) => {
-        if (!res.ok) throw new Error('Upload failed');
+        if (!res.ok) throw new Error('Unggah gagal');
         await fetchItems(activeFolderId, debouncedSearch);
-        return 'File uploaded successfully!';
+        return 'File berhasil diunggah!';
       });
 
     toast.promise(uploadPromise, {
-      loading: `Uploading "${file.name}"...`,
-      success: <b>File uploaded successfully!</b>,
-      error: <b>Error uploading file.</b>,
+      loading: `Mengunggah "${file.name}"...`,
+      success: <b>File berhasil diunggah!</b>,
+      error: <b>Gagal mengunggah file.</b>,
     });
 
     try {
@@ -131,12 +130,12 @@ export default function Home() {
 
   const handleDelete = async (e: React.MouseEvent, id: string, name: string) => {
     e.preventDefault(); e.stopPropagation();
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    if (!confirm(`Apakah Anda yakin ingin menghapus "${name}"?`)) return;
     setDeletingId(id);
     
     const deletePromise = fetch(`/api/drive/${id}`, { method: 'DELETE' })
       .then(async (res) => {
-        if (!res.ok) throw new Error('Delete failed');
+        if (!res.ok) throw new Error('Hapus gagal');
         setData(prev => ({ 
           ...prev, 
           files: prev.files.filter(f => f.id !== id), 
@@ -145,9 +144,9 @@ export default function Home() {
       });
 
     toast.promise(deletePromise, {
-      loading: `Deleting "${name}"...`,
-      success: <b>File deleted!</b>,
-      error: <b>Error deleting file.</b>,
+      loading: `Menghapus "${name}"...`,
+      success: <b>File berhasil dihapus!</b>,
+      error: <b>Gagal menghapus file.</b>,
     });
 
     try {
@@ -157,34 +156,28 @@ export default function Home() {
     }
   };
 
-  // Drag and Drop Handlers for Modal
   const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActive(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActive(false);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       processUpload(e.dataTransfer.files[0]);
     }
   }, [activeFolderId]);
 
-  // UI Components for Skeletons
   const SkeletonCard = () => (
     <div className="bg-white rounded-2xl border border-gray-200 p-4 h-full animate-pulse flex flex-col">
       <div className="aspect-square mb-4 bg-gray-200 rounded-xl"></div>
@@ -196,7 +189,6 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col relative bg-gray-50">
       
-      {/* Upload Modal Overlay */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative">
@@ -209,8 +201,8 @@ export default function Home() {
               </svg>
             </button>
             
-            <h2 className="text-xl font-bold mb-4 text-gray-800">Upload Document</h2>
-            <p className="text-sm text-gray-500 mb-6">File will be uploaded to: <strong className="text-gray-700">{data.currentFolderName}</strong></p>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Unggah Dokumen</h2>
+            <p className="text-sm text-gray-500 mb-6">File akan diunggah ke: <strong className="text-gray-700">{data.currentFolderName}</strong></p>
             
             <div 
               onDragEnter={handleDragEnter}
@@ -225,24 +217,23 @@ export default function Home() {
                 {dragActive ? '☁️' : '📁'}
               </span>
               <p className="text-gray-700 font-medium text-lg mb-1">
-                {dragActive ? 'Drop file here' : 'Drag & drop file here'}
+                {dragActive ? 'Lepaskan file di sini' : 'Seret & letakkan file di sini'}
               </p>
-              <p className="text-gray-500 text-sm">or click to browse</p>
+              <p className="text-gray-500 text-sm">atau klik untuk memilih file</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Persistent Top Navigation Bar */}
       <nav className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-10 shadow-sm shrink-0">
         <div className="max-w-6xl mx-auto flex items-center gap-4 overflow-x-auto scrollbar-hide">
           <button
-            onClick={() => navigateTo(null, 'All Documents')}
+            onClick={() => navigateTo(null, 'Semua Dokumen')}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all shrink-0 ${
               activeFolderId === null ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            📂 All Documents
+            📂 Semua Dokumen
           </button>
           {data.categories.length > 0 && <div className="h-4 w-px bg-gray-300 shrink-0 mx-1"></div>}
           {data.categories.map(cat => (
@@ -261,7 +252,6 @@ export default function Home() {
 
       <div className="flex-1 p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
-          {/* Breadcrumbs & Header */}
           <header className="mb-8">
             <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">
               {path.map((p, i) => (
@@ -277,33 +267,35 @@ export default function Home() {
               ))}
             </div>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <h1 className="text-3xl font-bold text-gray-900">{data.currentFolderName}</h1>
-                        <div className="flex items-center gap-4">
-                                      <div className="flex items-center gap-2 pr-4 border-r border-gray-200">
-                                        {session?.user?.image && (
-                                          <img src={session.user.image} referrerPolicy="no-referrer" alt="" className="w-8 h-8 rounded-full border border-gray-200" />
-                                        )}                            <div className="hidden sm:block">
-                              <p className="text-sm font-bold text-gray-900 leading-tight">{session?.user?.name}</p>
-                              <button 
-                                onClick={() => signOut()}
-                                className="text-[10px] text-gray-400 hover:text-red-500 font-bold uppercase tracking-widest transition-colors"
-                              >
-                                Sign Out
-                              </button>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-3">
-                            <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" />
-                            <button
-                              onClick={() => setIsUploadModalOpen(true)}
-                              disabled={uploading}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-200 transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-                            >
-                              <span className="text-xl">+</span> Add File
-                            </button>
-                          </div>
-                        </div>            </div>
+              <h1 className="text-3xl font-bold text-gray-900">{data.currentFolderName === 'All Documents' ? 'Semua Dokumen' : data.currentFolderName}</h1>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 pr-4 border-r border-gray-200">
+                  {session?.user?.image && (
+                    <img src={session.user.image} referrerPolicy="no-referrer" alt="" className="w-8 h-8 rounded-full border border-gray-200" />
+                  )}
+                  <div className="hidden sm:block">
+                    <p className="text-sm font-bold text-gray-900 leading-tight">{session?.user?.name}</p>
+                    <button 
+                      onClick={() => signOut()}
+                      className="text-[10px] text-gray-400 hover:text-red-500 font-bold uppercase tracking-widest transition-colors"
+                    >
+                      Keluar
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" />
+                  <button
+                    onClick={() => setIsUploadModalOpen(true)}
+                    disabled={uploading}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-200 transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    <span className="text-xl">+</span> Tambah File
+                  </button>
+                </div>
+              </div>
+            </div>
           </header>
 
           <div className="mb-8">
@@ -311,7 +303,7 @@ export default function Home() {
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">🔍</span>
               <input
                 type="text"
-                placeholder={activeFolderId === null ? "Search all categories..." : `Search in ${data.currentFolderName}...`}
+                placeholder={activeFolderId === null ? "Cari di semua kategori..." : `Cari di ${data.currentFolderName}...`}
                 className="w-full pl-12 pr-4 py-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
@@ -322,7 +314,7 @@ export default function Home() {
           {loading ? (
             <div className="space-y-8">
                <div>
-                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Loading Documents...</h2>
+                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Memuat Dokumen...</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {[1, 2, 3, 4].map(i => <SkeletonCard key={i} />)}
                   </div>
@@ -333,18 +325,17 @@ export default function Home() {
           ) : data.folders.length === 0 && data.files.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
               <p className="text-gray-500 text-lg mb-2">
-                {debouncedSearch ? `No results found for "${debouncedSearch}"` : "This folder is empty."}
+                {debouncedSearch ? `Hasil tidak ditemukan untuk "${debouncedSearch}"` : "Folder ini kosong."}
               </p>
               {!debouncedSearch && (
-                <button onClick={() => setIsUploadModalOpen(true)} className="text-blue-600 hover:underline font-medium">Upload a file</button>
+                <button onClick={() => setIsUploadModalOpen(true)} className="text-blue-600 hover:underline font-medium">Unggah file pertama</button>
               )}
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Folders Section */}
               {data.folders.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Subfolders</h2>
+                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Subfolder</h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     {data.folders.map(folder => (
                       <button
@@ -360,10 +351,9 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Files Section */}
               {data.files.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Documents</h2>
+                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Dokumen</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {data.files.map((file) => (
                       <div key={file.id} className="group relative bg-white rounded-2xl border border-gray-200 p-4 transition-all hover:shadow-xl hover:border-blue-300 flex flex-col h-full">
