@@ -304,7 +304,7 @@ export default function Home() {
               <input
                 type="text"
                 placeholder={activeFolderId === null ? "Cari di semua kategori..." : `Cari di ${data.currentFolderName}...`}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm text-gray-800 placeholder:text-gray-400"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
               />
