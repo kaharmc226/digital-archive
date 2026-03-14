@@ -56,15 +56,26 @@ export async function getUserPermissions(email: string | null | undefined): Prom
     
     // Parse the CSV
     const lines = csvText.split('\n');
+    if (lines.length < 2) return []; // Need at least header and one data row
+
+    // Dynamically find column indices based on headers
+    const headers = parseCsvLine(lines[0].trim()).map(h => h.toLowerCase().replace(/"/g, ''));
+    let emailIdx = headers.findIndex(h => h.includes('email') || h === 'alamat email');
+    let foldersIdx = headers.findIndex(h => h.includes('akses folder') || h.includes('permissions') || h.includes('folder'));
+
+    // Fallbacks if header names don't match exactly
+    if (emailIdx === -1) emailIdx = 1; // Google Forms usually puts Email in col B if Timestamp is col A
+    if (foldersIdx === -1) foldersIdx = headers.length > 2 ? headers.length - 1 : 2; // Assume last column
+
     for (let i = 1; i < lines.length; i++) { // Skip header row
       const line = lines[i].trim();
       if (!line) continue;
       
       const columns = parseCsvLine(line);
-      if (columns.length < 2) continue;
+      if (columns.length <= Math.max(emailIdx, foldersIdx) && columns.length < 2) continue;
       
-      const rowEmail = columns[0].trim().toLowerCase();
-      const rowFolders = columns[1].trim();
+      const rowEmail = (columns[emailIdx] || '').trim().toLowerCase();
+      const rowFolders = (columns[foldersIdx] || '').trim();
       
       if (rowEmail === email.toLowerCase()) {
         if (rowFolders === '*' || rowFolders === '') {
