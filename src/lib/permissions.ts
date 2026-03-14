@@ -78,8 +78,11 @@ export async function getUserPermissions(email: string | null | undefined): Prom
       const rowFolders = (columns[foldersIdx] || '').trim();
       
       if (rowEmail === email.toLowerCase()) {
-        if (rowFolders === '*' || rowFolders === '') {
+        if (rowFolders === '*') {
           return ['*']; // Full access
+        }
+        if (rowFolders === '') {
+          return ['#NONE#']; // Assigned but no folders allowed
         }
         // Split by comma and clean up whitespace
         return rowFolders.split(',').map(f => f.trim().toLowerCase()).filter(f => f);
