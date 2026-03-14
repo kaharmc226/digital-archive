@@ -12,14 +12,15 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const rootId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    const folderId = searchParams.get('folderId') || rootId;
-    const search = searchParams.get('search') || '';
-    const type = searchParams.get('type') || '';
-    const date = searchParams.get('date') || '';
     
     if (!rootId) {
       return NextResponse.json({ error: 'Root Folder ID not configured' }, { status: 500 });
     }
+
+    const folderId = searchParams.get('folderId') || rootId;
+    const search = searchParams.get('search') || '';
+    const type = searchParams.get('type') || '';
+    const date = searchParams.get('date') || '';
 
     // Check user permissions
     const allowedFolders = await getUserPermissions(session.user.email);
