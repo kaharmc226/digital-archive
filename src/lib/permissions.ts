@@ -87,3 +87,43 @@ export function filterAllowedCategories(categories: any[], allowedFolders: strin
   if (allowedFolders.includes('*')) return categories;
   return categories.filter(cat => allowedFolders.includes(cat.name?.toLowerCase() || ''));
 }
+
+export async function validateFolderAccess(folderId: string, allowedFolders: string[], rootId: string): Promise<{hasAccess: boolean, folderName?: string}> {
+  if (allowedFolders.includes('*')) return { hasAccess: true };
+
+  try {
+    const drive = await getDriveService();
+    let currentId = folderId;
+    let folderName = '';
+
+    // Trace up the hierarchy
+    while (currentId && currentId !== rootId) {
+      const response = await drive.files.get({
+        fileId: currentId,
+        fields: 'id, name, parents',
+      });
+      
+      const fileData = response.data;
+      if (!folderName) {
+         folderName = fileData.name || 'Folder'; // Save the immediate requested folder name
+      }
+
+      // Check if this folder's name is in the allowed list
+      if (fileData.name && allowedFolders.includes(fileData.name.toLowerCase())) {
+        return { hasAccess: true, folderName };
+      }
+
+      // Move up to the parent
+      if (fileData.parents && fileData.parents.length > 0) {
+        currentId = fileData.parents[0];
+      } else {
+        break; // Reached the top of drive (not rootId)
+      }
+    }
+
+    return { hasAccess: false, folderName };
+  } catch (error) {
+    console.error('Error validating folder access:', error);
+    return { hasAccess: false };
+  }
+}
