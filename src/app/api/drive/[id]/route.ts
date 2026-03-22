@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDriveService } from '@/lib/googleDrive';
 import { auth } from '@/auth';
-import { getUserPermissions, validateFolderAccess } from '@/lib/permissions';
+import { getUserProfile, getOrCreatePersonalFolder } from '@/lib/permissions';
 
 export async function DELETE(
   request: Request,
@@ -21,13 +21,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Missing file ID or configuration' }, { status: 400 });
     }
 
-    // Check user permissions
-    const allowedFolders = await getUserPermissions(session.user.email);
-    if (allowedFolders.length === 0) {
+    // 1. Check user permissions
+    const userProfile = await getUserProfile(session.user.email);
+    if (!userProfile.hasAccess) {
       return NextResponse.json({ error: 'Akses Ditolak' }, { status: 403 });
     }
 
-    // To delete a file, we need to know what folder it's in to check permissions
+    // 2. To delete a file, we need to know what folder it's in to check permissions
     const fileMeta = await drive.files.get({
        fileId: fileId,
        fields: 'parents'
@@ -39,17 +39,34 @@ export async function DELETE(
 
     const parentId = fileMeta.data.parents[0];
 
-    // Is the file in root?
-    if (parentId === rootId) {
-       if (!allowedFolders.includes('*')) {
-          return NextResponse.json({ error: 'Anda tidak memiliki izin untuk menghapus file di direktori utama.' }, { status: 403 });
-       }
-    } else {
-       // It's in a subfolder, check hierarchical access
-       const accessCheck = await validateFolderAccess(parentId, allowedFolders, rootId);
-       if (!accessCheck.hasAccess) {
-         return NextResponse.json({ error: 'Anda tidak memiliki izin untuk menghapus file di folder ini.' }, { status: 403 });
-       }
+    // 3. Determine user's root constraint
+    let userRootId = rootId;
+    if (!userProfile.isAdmin) {
+      userRootId = await getOrCreatePersonalFolder(userProfile.name, userProfile.email);
+    }
+
+    // 4. Verify ownership
+    if (parentId !== userRootId) {
+      if (!userProfile.isAdmin) {
+        let currentId = parentId;
+        let isAllowed = false;
+        try {
+          while (currentId && currentId !== userRootId && currentId !== rootId) {
+             const parentRes = await drive.files.get({ fileId: currentId, fields: 'parents' });
+             if (!parentRes.data.parents || parentRes.data.parents.length === 0) break;
+             currentId = parentRes.data.parents[0];
+          }
+          if (currentId === userRootId) {
+             isAllowed = true;
+          }
+        } catch (e) {
+             isAllowed = false;
+        }
+
+        if (!isAllowed) {
+           return NextResponse.json({ error: 'Anda tidak memiliki izin untuk menghapus file ini.' }, { status: 403 });
+        }
+      }
     }
 
     await drive.files.delete({

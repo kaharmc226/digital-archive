@@ -31,6 +31,7 @@ export default function Home() {
   
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   
   const [filterType, setFilterType] = useState('');
   const [filterDate, setFilterDate] = useState('');
@@ -88,6 +89,7 @@ export default function Home() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchInput);
+      setIsTyping(false);
     }, 500);
     return () => clearTimeout(timer);
   }, [searchInput]);
@@ -112,6 +114,17 @@ export default function Home() {
       const resData = await res.json();
       if (resData.error) throw new Error(resData.error);
       setData(resData);
+      
+      // Update root breadcrumb name to match currentFolderName
+      if (folderId === null) {
+        setPath(prev => {
+          const newPath = [...prev];
+          if (newPath.length > 0 && newPath[0].id === null) {
+            newPath[0].name = resData.currentFolderName || 'Semua Dokumen';
+          }
+          return newPath;
+        });
+      }
     } catch (err: any) {
       setError(err.message || 'Gagal memuat file');
       toast.error(err.message || 'Gagal memuat file');
@@ -132,13 +145,13 @@ export default function Home() {
     setSelectedIds([]); // Clear selection
     
     if (id === null) {
-      setPath([{id: null, name: 'Semua Dokumen'}]);
+      setPath([{id: null, name: data.currentFolderName || 'Semua Dokumen'}]);
       setActiveFolderId(null);
       return;
     }
     
     if (isTopCategory) {
-      setPath([{id: null, name: 'Semua Dokumen'}, {id, name}]);
+      setPath([{id: null, name: data.currentFolderName || 'Semua Dokumen'}, {id, name}]);
     } else {
       const index = path.findIndex(p => p.id === id);
       if (index !== -1) {
@@ -494,7 +507,7 @@ export default function Home() {
                   placeholder={activeFolderId === null ? "Cari dokumen..." : `Cari di ${data.currentFolderName}...`}
                   className="w-full pl-10 pr-10 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50 hover:bg-white focus:bg-white transition-colors text-sm text-gray-800 placeholder:text-gray-400"
                   value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                  onChange={(e) => { setSearchInput(e.target.value); setIsTyping(true); }}
                 />
                 {searchInput && (
                   <button
@@ -591,10 +604,12 @@ export default function Home() {
         
         {/* Left Column: File List */}
         <div className={`flex-1 overflow-y-auto p-4 md:p-6 transition-all duration-300 ${activeFile ? 'hidden lg:block lg:pr-4' : ''}`}>
-          {loading ? (
+          {(loading || isTyping) ? (
             <div className="space-y-8 mt-2">
                <div>
-                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Memuat Dokumen...</h2>
+                  <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">
+                    {isTyping ? "Mengetik..." : "Memuat Dokumen..."}
+                  </h2>
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {[1, 2, 3, 4, 5, 6].map(i => <SkeletonGridCard key={i} />)}
@@ -609,15 +624,23 @@ export default function Home() {
           ) : error ? (
             <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm text-red-700 mt-2"><strong>Error:</strong> {error}</div>
           ) : mergedItems.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 mt-2">
-              <p className="text-gray-500 text-lg mb-2">
-                {debouncedSearch ? `Hasil tidak ditemukan untuk "${debouncedSearch}"` : "Folder ini kosong."}
+            <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 mt-2 flex flex-col items-center justify-center">
+              <div className="bg-gray-50 rounded-full p-6 mb-4">
+                <span className="text-5xl text-gray-400">
+                  {debouncedSearch ? '🔍' : '📭'}
+                </span>
+              </div>
+              <h3 className="text-gray-800 font-bold text-xl mb-2">
+                {debouncedSearch ? `Pencarian tidak ditemukan` : "Folder ini kosong"}
+              </h3>
+              <p className="text-gray-500 max-w-sm mx-auto mb-6">
+                {debouncedSearch ? `Kami tidak dapat menemukan hasil untuk "${debouncedSearch}". Coba gunakan kata kunci yang berbeda.` : "Belum ada dokumen atau file yang diunggah ke folder ini."}
               </p>
               {!debouncedSearch && (
                 <div className="flex items-center justify-center gap-4">
-                  <button onClick={() => setIsFolderModalOpen(true)} className="text-blue-600 hover:underline font-medium">Buat folder</button>
+                  <button onClick={() => setIsFolderModalOpen(true)} className="text-blue-600 hover:text-blue-800 font-semibold transition-colors">Buat folder</button>
                   <span className="text-gray-300">|</span>
-                  <button onClick={() => setIsUploadModalOpen(true)} className="text-blue-600 hover:underline font-medium">Unggah file pertama</button>
+                  <button onClick={() => setIsUploadModalOpen(true)} className="text-blue-600 hover:text-blue-800 font-semibold transition-colors">Unggah file pertama</button>
                 </div>
               )}
             </div>

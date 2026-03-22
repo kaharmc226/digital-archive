@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDriveService } from '@/lib/googleDrive';
 import { Readable } from 'stream';
 import { auth } from '@/auth';
-import { getUserPermissions, validateFolderAccess } from '@/lib/permissions';
+import { getUserProfile, getOrCreatePersonalFolder } from '@/lib/permissions';
 
 export async function POST(request: Request) {
   try {
@@ -14,33 +14,57 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const rootId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    const targetFolderId = (formData.get('folderId') as string) || rootId;
-
-    if (!file || !targetFolderId || !rootId) {
-      return NextResponse.json({ error: 'Missing file or folder configuration' }, { status: 400 });
+    
+    if (!file || !rootId) {
+      return NextResponse.json({ error: 'Missing file or configuration' }, { status: 400 });
     }
 
-    // Check permissions
-    const allowedFolders = await getUserPermissions(session.user.email);
-    if (allowedFolders.length === 0) {
+    const userProfile = await getUserProfile(session.user.email);
+    if (!userProfile.hasAccess) {
       return NextResponse.json({ error: 'Akses ditolak' }, { status: 403 });
     }
 
-    if (targetFolderId !== rootId) {
-       const accessCheck = await validateFolderAccess(targetFolderId, allowedFolders, rootId);
-       if (!accessCheck.hasAccess) {
-         return NextResponse.json({ error: 'Anda tidak memiliki izin untuk mengunggah ke folder ini.' }, { status: 403 });
-       }
-    } else {
-       // Uploading to root. Is it allowed?
-       if (!allowedFolders.includes('*')) {
-          // If not admin, they can't upload to root, only to their specific category folders
-          return NextResponse.json({ error: 'Anda tidak memiliki izin untuk mengunggah ke direktori utama.' }, { status: 403 });
-       }
+    const drive = await getDriveService();
+
+    // 1. Determine user's root constraint
+    let userRootId = rootId;
+    if (!userProfile.isAdmin) {
+      userRootId = await getOrCreatePersonalFolder(userProfile.name, userProfile.email);
     }
 
-    const drive = await getDriveService();
+    // 2. Resolve target folder. If they submitted rootId but aren't admin, force to userRootId
+    let requestedFolderId = formData.get('folderId') as string;
+    let targetFolderId = requestedFolderId;
     
+    if (!requestedFolderId || requestedFolderId === rootId) {
+       targetFolderId = userRootId;
+    }
+
+    // 3. Security check if uploading to a subfolder
+    if (targetFolderId !== userRootId) {
+      if (!userProfile.isAdmin) {
+        let currentId = targetFolderId;
+        let isAllowed = false;
+        // Verify ownership
+        try {
+          while (currentId && currentId !== userRootId && currentId !== rootId) {
+             const parentRes = await drive.files.get({ fileId: currentId, fields: 'parents' });
+             if (!parentRes.data.parents || parentRes.data.parents.length === 0) break;
+             currentId = parentRes.data.parents[0];
+          }
+          if (currentId === userRootId) {
+             isAllowed = true;
+          }
+        } catch (e) {
+             isAllowed = false;
+        }
+
+        if (!isAllowed) {
+           return NextResponse.json({ error: 'Anda tidak memiliki izin untuk mengunggah ke folder ini.' }, { status: 403 });
+        }
+      }
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const stream = new Readable();

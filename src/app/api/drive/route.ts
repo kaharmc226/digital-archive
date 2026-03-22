@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDriveService } from '@/lib/googleDrive';
 import { auth } from '@/auth';
-import { getUserPermissions, filterAllowedCategories, validateFolderAccess } from '@/lib/permissions';
+import { getUserProfile, getOrCreatePersonalFolder } from '@/lib/permissions';
 
 export async function GET(request: Request) {
   try {
@@ -17,14 +17,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Root Folder ID not configured' }, { status: 500 });
     }
 
-    const folderId = searchParams.get('folderId') || rootId;
     const search = searchParams.get('search') || '';
     const type = searchParams.get('type') || '';
     const date = searchParams.get('date') || '';
 
-    // Check user permissions
-    const allowedFolders = await getUserPermissions(session.user.email);
-    if (allowedFolders.length === 0) {
+    // 1. Check user profile and permissions
+    const userProfile = await getUserProfile(session.user.email);
+    if (!userProfile.hasAccess) {
       return NextResponse.json({ 
         currentFolderName: 'Akses Ditolak', 
         folders: [], files: [], categories: [], 
@@ -33,42 +32,73 @@ export async function GET(request: Request) {
     }
 
     const drive = await getDriveService();
-    let currentFolderName = 'Semua Dokumen';
 
-    // Hierarchical access check if not at root
-    if (folderId !== rootId) {
-      const accessCheck = await validateFolderAccess(folderId, allowedFolders, rootId);
-      if (!accessCheck.hasAccess) {
-        return NextResponse.json({ 
-          currentFolderName: 'Akses Ditolak', 
-          folders: [], files: [], categories: [], 
-          error: 'Anda tidak memiliki izin untuk melihat folder ini.' 
-        }, { status: 403 });
-      }
-      currentFolderName = accessCheck.folderName || 'Folder';
+    // 2. Determine the user's root constraint
+    let userRootId = rootId;
+    if (!userProfile.isAdmin) {
+      userRootId = await getOrCreatePersonalFolder(userProfile.name, userProfile.email);
     }
 
-    // 2. Always fetch top-level folders (for the persistent category bar)
-    const rootResponse = await drive.files.list({
-      q: `'${rootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-      fields: 'files(id, name)',
-      orderBy: 'name',
-    });
-    let categories = rootResponse.data.files || [];
+    // 3. Resolve the requested folder ID
+    let resolvedFolderId = searchParams.get('folderId') || userRootId;
     
-    // Filter categories based on user permissions
-    categories = filterAllowedCategories(categories, allowedFolders);
+    // Default naming
+    let currentFolderName = userProfile.isAdmin ? 'Semua Dokumen' : 'Folder Pribadi';
 
-    let q = `'${folderId}' in parents and trashed = false`;
+    // 4. Security Check & Name Resolution if not at their userRootId
+    if (resolvedFolderId !== userRootId) {
+      try {
+        const folderRes = await drive.files.get({ fileId: resolvedFolderId, fields: 'name, parents' });
+        currentFolderName = folderRes.data.name || 'Folder';
+        
+        // If not admin, verify that the requested folder is actually inside their personal vault
+        if (!userProfile.isAdmin) {
+          let currentId = resolvedFolderId;
+          let isAllowed = false;
+          // Traverse up to securely check ownership
+          while (currentId && currentId !== userRootId && currentId !== rootId) {
+             const parentRes = await drive.files.get({ fileId: currentId, fields: 'parents' });
+             if (!parentRes.data.parents || parentRes.data.parents.length === 0) break;
+             currentId = parentRes.data.parents[0];
+          }
+          if (currentId === userRootId) {
+             isAllowed = true;
+          }
+          
+          if (!isAllowed) {
+             return NextResponse.json({ 
+                currentFolderName: 'Akses Ditolak', folders: [], files: [], categories: [], 
+                error: 'Anda tidak memiliki izin untuk melihat folder ini.' 
+             }, { status: 403 });
+          }
+        }
+      } catch (e) {
+        return NextResponse.json({ error: 'Folder tidak ditemukan atau akses ditolak' }, { status: 404 });
+      }
+    }
+
+    // 5. Fetch categories (Only for Admins)
+    let categories: any[] = [];
+    if (userProfile.isAdmin) {
+      const rootResponse = await drive.files.list({
+        q: `'${rootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'files(id, name)',
+        orderBy: 'name',
+      });
+      categories = rootResponse.data.files || [];
+    }
+
+    // 6. Construct Drive Query
+    let q = `'${resolvedFolderId}' in parents and trashed = false`;
 
     if (search || type || date) {
-      let baseQuery = '';
-      if (folderId === rootId) {
+      let baseQuery = `'${resolvedFolderId}' in parents`;
+      
+      // If admin is searching at root, include sub-categories in the scan
+      if (userProfile.isAdmin && resolvedFolderId === rootId) {
         const parentIds = [rootId, ...categories.map(c => c.id!)];
         const parentsQuery = parentIds.map(id => `'${id}' in parents`).join(' or ');
         baseQuery = `(${parentsQuery})`;
-      } else {
-        baseQuery = `'${folderId}' in parents`;
       }
 
       let conditions = [baseQuery, 'trashed = false'];
@@ -122,7 +152,7 @@ export async function GET(request: Request) {
       q = conditions.join(' and ');
     }
 
-    // 4. Fetch the actual items
+    // 7. Execute Query
     const response = await drive.files.list({
       q: q,
       fields: 'files(id, name, mimeType, webViewLink, webContentLink, iconLink, thumbnailLink, size, createdTime)',
@@ -133,11 +163,9 @@ export async function GET(request: Request) {
     let folders = items.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
     const files = items.filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
 
-    // Filter root-level folders if we are at the root
-    if (folderId === rootId) {
-      folders = filterAllowedCategories(folders, allowedFolders);
-    }
-
+    // Remove personal folders from Admin's root view so it doesn't clutter their standard categories?
+    // Actually, admins should be able to see personal folders. But we can keep them visible.
+    
     return NextResponse.json({ 
       currentFolderName,
       folders, 

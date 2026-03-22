@@ -1,6 +1,13 @@
 import { getDriveService } from './googleDrive';
 import { Session } from 'next-auth';
 
+export interface UserProfile {
+  hasAccess: boolean;
+  isAdmin: boolean;
+  name: string;
+  email: string;
+}
+
 function parseCsvLine(text: string): string[] {
   const result: string[] = [];
   let current = '';
@@ -33,14 +40,12 @@ function parseCsvLine(text: string): string[] {
   return result;
 }
 
-export async function getUserPermissions(email: string | null | undefined): Promise<string[]> {
-  if (!email) return []; // No email, no access
+export async function getUserProfile(email: string | null | undefined): Promise<UserProfile> {
+  if (!email) return { hasAccess: false, isAdmin: false, name: '', email: '' };
   
   const sheetId = process.env.GOOGLE_SHEET_ID;
   if (!sheetId) {
-    // If no spreadsheet is configured, we fallback to allowing all access (or you could change this to deny all)
-    // For now, let's allow all to prevent breaking the app if they haven't set it up yet.
-    return ['*'];
+    return { hasAccess: true, isAdmin: true, name: 'Admin (No Sheet)', email };
   }
 
   try {
@@ -56,16 +61,18 @@ export async function getUserPermissions(email: string | null | undefined): Prom
     
     // Parse the CSV
     const lines = csvText.split('\n');
-    if (lines.length < 2) return []; // Need at least header and one data row
+    if (lines.length < 2) return { hasAccess: false, isAdmin: false, name: '', email };
 
     // Dynamically find column indices based on headers
     const headers = parseCsvLine(lines[0].trim()).map(h => h.toLowerCase().replace(/"/g, ''));
     let emailIdx = headers.findIndex(h => h.includes('email') || h === 'alamat email');
     let foldersIdx = headers.findIndex(h => h.includes('akses folder') || h.includes('permissions') || h.includes('folder'));
+    let nameIdx = headers.findIndex(h => h.includes('nama lengkap') || h.includes('nama') || h.includes('name'));
 
     // Fallbacks if header names don't match exactly
-    if (emailIdx === -1) emailIdx = 1; // Google Forms usually puts Email in col B if Timestamp is col A
-    if (foldersIdx === -1) foldersIdx = headers.length > 2 ? headers.length - 1 : 2; // Assume last column
+    if (emailIdx === -1) emailIdx = 1; 
+    if (foldersIdx === -1) foldersIdx = headers.length > 2 ? headers.length - 1 : 2; 
+    if (nameIdx === -1) nameIdx = 0; // Assume name is in column A if not explicit
 
     for (let i = 1; i < lines.length; i++) { // Skip header row
       const line = lines[i].trim();
@@ -76,68 +83,61 @@ export async function getUserPermissions(email: string | null | undefined): Prom
       
       const rowEmail = (columns[emailIdx] || '').trim().toLowerCase();
       const rowFolders = (columns[foldersIdx] || '').trim();
+      const rowName = (columns[nameIdx] || 'Siswa').trim();
       
       if (rowEmail === email.toLowerCase()) {
-        if (rowFolders === '*') {
-          return ['*']; // Full access
-        }
-        if (rowFolders === '') {
-          return ['#NONE#']; // Assigned but no folders allowed
-        }
-        // Split by comma and clean up whitespace
-        return rowFolders.split(',').map(f => f.trim().toLowerCase()).filter(f => f);
+        const isAdmin = rowFolders.includes('*') || rowFolders.toLowerCase().includes('admin');
+        return {
+          hasAccess: true,
+          isAdmin,
+          name: rowName,
+          email: rowEmail
+        };
       }
     }
     
     // If user not found in the list, they have no access
-    return [];
+    return { hasAccess: false, isAdmin: false, name: '', email };
   } catch (error) {
     console.error('Error fetching permissions from sheet:', error);
-    return []; // Deny access on error
+    return { hasAccess: false, isAdmin: false, name: '', email }; // Deny access on error
   }
 }
 
-export function filterAllowedCategories(categories: any[], allowedFolders: string[]) {
-  if (allowedFolders.includes('*')) return categories;
-  return categories.filter(cat => allowedFolders.includes(cat.name?.toLowerCase() || ''));
-}
+export async function getOrCreatePersonalFolder(userName: string, userEmail: string): Promise<string> {
+  const rootId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  if (!rootId) throw new Error("Missing GOOGLE_DRIVE_FOLDER_ID environment variable.");
 
-export async function validateFolderAccess(folderId: string, allowedFolders: string[], rootId: string): Promise<{hasAccess: boolean, folderName?: string}> {
-  if (allowedFolders.includes('*')) return { hasAccess: true };
+  const drive = await getDriveService();
+  const folderName = `${userName} - ${userEmail}`;
 
   try {
-    const drive = await getDriveService();
-    let currentId = folderId;
-    let folderName = '';
+    // 1. Search if folder already exists in the master root
+    const query = `'${rootId}' in parents and name = '${folderName.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    
+    const searchRes = await drive.files.list({
+      q: query,
+      fields: 'files(id, name)',
+      spaces: 'drive'
+    });
 
-    // Trace up the hierarchy
-    while (currentId && currentId !== rootId) {
-      const response = await drive.files.get({
-        fileId: currentId,
-        fields: 'id, name, parents',
-      });
-      
-      const fileData = response.data;
-      if (!folderName) {
-         folderName = fileData.name || 'Folder'; // Save the immediate requested folder name
-      }
-
-      // Check if this folder's name is in the allowed list
-      if (fileData.name && allowedFolders.includes(fileData.name.toLowerCase())) {
-        return { hasAccess: true, folderName };
-      }
-
-      // Move up to the parent
-      if (fileData.parents && fileData.parents.length > 0) {
-        currentId = fileData.parents[0];
-      } else {
-        break; // Reached the top of drive (not rootId)
-      }
+    if (searchRes.data.files && searchRes.data.files.length > 0) {
+      return searchRes.data.files[0].id!;
     }
 
-    return { hasAccess: false, folderName };
-  } catch (error) {
-    console.error('Error validating folder access:', error);
-    return { hasAccess: false };
+    // 2. If not found, instantly create a new personal folder
+    const createRes = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [rootId]
+      },
+      fields: 'id'
+    });
+
+    return createRes.data.id!;
+  } catch (err: any) {
+    console.error("Error creating personal folder:", err);
+    throw new Error("Failed to create personal vault.");
   }
 }
