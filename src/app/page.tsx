@@ -11,6 +11,7 @@ import { HeaderActions } from '../components/HeaderActions';
 
 import { DriveItem } from '../types/drive';
 import { SkeletonGridCard, SkeletonListRow } from '../components/Skeletons';
+import { createFolderAction, uploadFileAction, deleteFileAction } from '../actions/drive';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -171,9 +172,8 @@ export default function Home() {
       if (activeFolderId) formData.append('folderId', activeFolderId);
 
       try {
-        const res = await fetch('/api/drive/upload', { method: 'POST', body: formData });
-        const resData = await res.json();
-        if (!res.ok) throw new Error(resData.error || 'Unggah gagal');
+        const result = await uploadFileAction(formData);
+        if (result.error) throw new Error(result.error || 'Unggah gagal');
         successCount++;
       } catch (err) {
         failCount++;
@@ -198,14 +198,10 @@ export default function Home() {
 
   const handleCreateFolder = async (name: string) => {
     try {
-      const res = await fetch('/api/drive/folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, parentId: activeFolderId }),
-      });
+      // Direct call to Next.js Server Action instead of API Route!
+      const result = await createFolderAction(name, activeFolderId);
       
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Gagal membuat folder');
+      if (result.error) throw new Error(result.error);
       
       toast.success(<b>Folder "{name}" berhasil dibuat!</b>);
       await fetchItems(activeFolderId, debouncedSearch, filterType, filterDate);
@@ -225,10 +221,9 @@ export default function Home() {
       setActiveFile(null);
     }
 
-    const deletePromise = fetch(`/api/drive/${id}`, { method: 'DELETE' })
-      .then(async (res) => {
-        const resData = await res.json();
-        if (!res.ok) throw new Error(resData.error || 'Hapus gagal');
+    const deletePromise = deleteFileAction(id)
+      .then((resData: any) => {
+        if (resData.error) throw new Error(resData.error || 'Hapus gagal');
         setData(prev => ({ 
           ...prev, 
           files: prev.files.filter(f => f.id !== id), 
@@ -265,8 +260,8 @@ export default function Home() {
 
     for (const id of idsToDelete) {
       try {
-        const res = await fetch(`/api/drive/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
+        const res = await deleteFileAction(id);
+        if (res.error) throw new Error(res.error);
         successCount++;
         // Optimistic update
         setData(prev => ({ 
